@@ -2,3 +2,7 @@
 result
 result-*
 .direnv
+*.log
+*.pkg
+.DS_Store
+
