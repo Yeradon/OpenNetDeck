@@ -20,7 +20,18 @@
             lockFile = ./Cargo.lock;
           };
           nativeBuildInputs = [ pkgs.pkg-config ];
-          buildInputs = [ pkgs.libusb1 pkgs.udev ];
+          buildInputs = [ pkgs.libusb1 ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin (
+              if pkgs ? darwin && pkgs.darwin ? apple_sdk then
+                [
+                  pkgs.darwin.apple_sdk.frameworks.IOKit
+                  pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+                  pkgs.darwin.apple_sdk.frameworks.AppKit
+                ]
+              else
+                [ ]
+            );
         };
 
         checks = {
@@ -36,8 +47,18 @@
             rust-analyzer
             pkg-config
             libusb1
-            udev
-          ];
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin (
+            if pkgs ? darwin && pkgs.darwin ? apple_sdk then
+              [
+                pkgs.darwin.apple_sdk.frameworks.IOKit
+                pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+                pkgs.darwin.apple_sdk.frameworks.AppKit
+              ]
+            else
+              [ ]
+          );
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };
       }
