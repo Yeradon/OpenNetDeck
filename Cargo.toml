@@ -2,5 +2,6 @@
 members = [
     "crates/opennetdeck-protocol",
     "crates/opennetdeck-server",
+    "crates/opennetdeck-embedded",
 ]
 resolver = "2"

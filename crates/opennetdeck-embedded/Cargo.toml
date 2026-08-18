@@ -1,0 +1,17 @@
+[package]
+name = "opennetdeck-embedded"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenNetDeck Contributors"]
+description = "Generic bare-metal MCU (no_std) runtime for Elgato Network Dock and Stream Deck, compatible with Embassy, smoltcp, and embedded-io-async"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+opennetdeck-protocol = { path = "../opennetdeck-protocol", default-features = false, features = ["alloc"] }
+embedded-io-async = "0.6.1"
+log = "0.4.22"
+heapless = "0.8.0"
+
+[features]
+default = ["alloc"]
+alloc = ["opennetdeck-protocol/alloc"]
