@@ -40,81 +40,98 @@ struct StreamDeckUsbInner {
 }
 
 impl StreamDeckUsbHandle {
+    /// Attempt to claim and initialize a specific USB device info.
+    pub async fn open_from_info(dev: &nusb::DeviceInfo) -> Result<Self, UsbDeviceError> {
+        let model = match_streamdeck_model(dev.vendor_id(), dev.product_id());
+        info!(
+            vid = dev.vendor_id(),
+            pid = dev.product_id(),
+            model = ?model.map(|m| m.name()),
+            "Claiming Stream Deck USB device..."
+        );
+
+        let handle = dev.open().await.map_err(UsbDeviceError::Device)?;
+        let interface = handle
+            .detach_and_claim_interface(0)
+            .await
+            .map_err(UsbDeviceError::Device)?;
+
+        let mut ep_in_addr = 0x81;
+        let mut ep_out_addr = Some(0x02);
+        let mut max_packet_size = 512;
+
+        for alt in interface.descriptors() {
+            for ep in alt.endpoints() {
+                if ep.direction() == nusb::transfer::Direction::In {
+                    ep_in_addr = ep.address();
+                    max_packet_size = ep.max_packet_size();
+                } else if ep.direction() == nusb::transfer::Direction::Out {
+                    ep_out_addr = Some(ep.address());
+                }
+            }
+        }
+
+        let serial_number = dev
+            .serial_number()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "UNKNOWN_SERIAL".to_string());
+
+        info!(
+            serial = %serial_number,
+            ep_in = format_args!("0x{:02x}", ep_in_addr),
+            ep_out = ?ep_out_addr.map(|a| format!("0x{:02x}", a)),
+            "Successfully claimed Stream Deck device"
+        );
+
+        Ok(Self {
+            inner: Arc::new(StreamDeckUsbInner {
+                vendor_id: dev.vendor_id(),
+                product_id: dev.product_id(),
+                serial_number,
+                model,
+                interface,
+                ep_in_addr,
+                ep_out_addr,
+                max_packet_size,
+                write_lock: Mutex::new(()),
+            }),
+        })
+    }
+
     pub async fn open_first() -> Result<Option<Self>, UsbDeviceError> {
         let devices = nusb::list_devices().await?;
         for dev in devices {
             if opennetdeck_protocol::models::is_streamdeck_vendor(dev.vendor_id()) {
-                let model = match_streamdeck_model(dev.vendor_id(), dev.product_id());
-                info!(
-                    vid = dev.vendor_id(),
-                    pid = dev.product_id(),
-                    model = ?model.map(|m| m.name()),
-                    "Found Stream Deck USB device, opening..."
-                );
-
-                let handle = match dev.open().await {
-                    Ok(h) => h,
+                match Self::open_from_info(&dev).await {
+                    Ok(h) => return Ok(Some(h)),
                     Err(e) => {
-                        warn!("Failed to open USB device: {}", e);
+                        warn!("Failed to claim USB device: {}", e);
                         continue;
-                    }
-                };
-
-                let interface = match handle.detach_and_claim_interface(0).await {
-                    Ok(i) => i,
-                    Err(e) => {
-                        error!(
-                            "Failed to detach kernel driver and claim interface 0: {}",
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                let mut ep_in_addr = 0x81;
-                let mut ep_out_addr = Some(0x02);
-                let mut max_packet_size = 512;
-
-                for alt in interface.descriptors() {
-                    for ep in alt.endpoints() {
-                        if ep.direction() == nusb::transfer::Direction::In {
-                            ep_in_addr = ep.address();
-                            max_packet_size = ep.max_packet_size();
-                        } else if ep.direction() == nusb::transfer::Direction::Out {
-                            ep_out_addr = Some(ep.address());
-                        }
                     }
                 }
-
-                // Query serial number via USB descriptor or standard feature report 0x06 / 0x84 / 0x03
-                let serial_number = dev
-                    .serial_number()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "UNKNOWN_SERIAL".to_string());
-
-                info!(
-                    serial = %serial_number,
-                    ep_in = format_args!("0x{:02x}", ep_in_addr),
-                    ep_out = ?ep_out_addr.map(|a| format!("0x{:02x}", a)),
-                    "Successfully claimed Stream Deck device"
-                );
-
-                return Ok(Some(Self {
-                    inner: Arc::new(StreamDeckUsbInner {
-                        vendor_id: dev.vendor_id(),
-                        product_id: dev.product_id(),
-                        serial_number,
-                        model,
-                        interface,
-                        ep_in_addr,
-                        ep_out_addr,
-                        max_packet_size,
-                        write_lock: Mutex::new(()),
-                    }),
-                }));
             }
         }
         Ok(None)
+    }
+
+    /// Enumerate and claim all currently connected Stream Deck USB hardware devices.
+    pub async fn open_all() -> Result<Vec<Self>, UsbDeviceError> {
+        let devices = nusb::list_devices().await?;
+        let mut claimed = Vec::new();
+        for dev in devices {
+            if opennetdeck_protocol::models::is_streamdeck_vendor(dev.vendor_id()) {
+                match Self::open_from_info(&dev).await {
+                    Ok(h) => claimed.push(h),
+                    Err(e) => {
+                        warn!(
+                            serial = dev.serial_number().unwrap_or("?"),
+                            "Failed to claim USB device: {}", e
+                        );
+                    }
+                }
+            }
+        }
+        Ok(claimed)
     }
 
     pub fn vendor_id(&self) -> u16 {

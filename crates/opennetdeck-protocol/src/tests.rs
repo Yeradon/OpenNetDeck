@@ -118,7 +118,7 @@ fn test_mac_address_0x85() {
 #[test]
 fn test_child_device_info_0x1c_and_hotplug() {
     let child =
-        ChildDeviceInfo::connected(0x0fd9, 0x0080, "Stream Deck MK.2", "CL12A1A99999", 5344);
+        ChildDeviceInfo::connected(0, 0x0fd9, 0x0080, "Stream Deck MK.2", "CL12A1A99999", 5344);
 
     let mut query_payload = [0u8; 128];
     child.build_payload(false, 0, &mut query_payload);
@@ -128,6 +128,7 @@ fn test_child_device_info_0x1c_and_hotplug() {
     assert_eq!(query_payload[5], 0x00);
 
     let parsed = ChildDeviceInfo::parse(&query_payload).unwrap().unwrap();
+    assert_eq!(parsed.slot_index, 0);
     assert_eq!(parsed.vendor_id, 0x0fd9);
     assert_eq!(parsed.product_id, 0x0080);
     assert_eq!(parsed.tcp_port, 5344);
@@ -140,5 +141,6 @@ fn test_child_device_info_0x1c_and_hotplug() {
     assert_eq!(&push_payload[2..4], &[124, 0]);
     assert_eq!(push_payload[5], 0x00);
     let parsed_push = ChildDeviceInfo::parse(&push_payload).unwrap().unwrap();
+    assert_eq!(parsed_push.slot_index, 0);
     assert_eq!(parsed_push.tcp_port, 5344);
 }

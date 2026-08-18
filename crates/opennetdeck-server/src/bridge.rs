@@ -279,18 +279,19 @@ impl SecondaryConnection {
             // Virtual queries on child port
             if report_id == 0x1c {
                 let model_name = device.model().map(|m| m.name()).unwrap_or("Stream Deck");
+                let requested_slot = if frame.payload.len() >= 3 {
+                    frame.payload[2]
+                } else {
+                    0
+                };
                 let child = ChildDeviceInfo::connected(
+                    requested_slot,
                     device.vendor_id(),
                     device.product_id(),
                     model_name,
                     device.serial_number(),
                     5344,
                 );
-                let requested_slot = if frame.payload.len() >= 3 {
-                    frame.payload[2]
-                } else {
-                    0
-                };
                 let resp_len = if frame.payload.len() >= 1024 {
                     1024
                 } else {

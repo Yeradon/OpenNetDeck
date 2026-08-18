@@ -174,21 +174,25 @@ async fn test_primary_port_server_protocol_lifecycle() {
     assert_eq!(resp_payload[1], 0x1c);
     assert_eq!(resp_payload[4], 0x00); // Disconnected
 
-    // 8. Trigger simulated child device connection and observe push notification
-    let child = ChildDeviceInfo::connected(
+    // 8. Trigger simulated child device connection on Slot 0 and observe push notification
+    let child_0 = ChildDeviceInfo::connected(
+        0,
         0x0fd9,
         0x0080,
         "Stream Deck MK.2",
         "STREAMDECK_MK2_SN",
         5344,
     );
-    state.set_device(Some(child.clone()), None).await;
+    state
+        .set_device_for_slot(0, Some(child_0.clone()), None)
+        .await;
 
-    // Read hotplug push notification
+    // Read hotplug push notification for Slot 0
     loop {
         let (_hdr, payload) = read_next_frame(&mut client, &mut read_buf).await;
         if payload.len() >= 128 && payload[0] == 0x01 && payload[1] == 0x0b {
             let parsed_child = ChildDeviceInfo::parse(&payload).unwrap().unwrap();
+            assert_eq!(parsed_child.slot_index, 0);
             assert_eq!(parsed_child.vendor_id, 0x0fd9);
             assert_eq!(parsed_child.product_id, 0x0080);
             assert_eq!(parsed_child.tcp_port, 5344);
@@ -197,12 +201,63 @@ async fn test_primary_port_server_protocol_lifecycle() {
         }
     }
 
-    // 9. Send Watchdog / Health Query (0x1a) and verify response
+    // 9. Trigger simulated second child device connection on Slot 1 and observe push notification
+    let child_1 = ChildDeviceInfo::connected(
+        1,
+        0x0fd9,
+        0x0084,
+        "Stream Deck +",
+        "STREAMDECK_PLUS_SN",
+        5345,
+    );
+    state
+        .set_device_for_slot(1, Some(child_1.clone()), None)
+        .await;
+
+    // Read hotplug push notification for Slot 1
+    loop {
+        let (_hdr, payload) = read_next_frame(&mut client, &mut read_buf).await;
+        if payload.len() >= 128 && payload[0] == 0x01 && payload[1] == 0x0b {
+            let parsed_child = ChildDeviceInfo::parse(&payload).unwrap().unwrap();
+            if parsed_child.slot_index == 1 {
+                assert_eq!(parsed_child.vendor_id, 0x0fd9);
+                assert_eq!(parsed_child.product_id, 0x0084);
+                assert_eq!(parsed_child.tcp_port, 5345);
+                assert_eq!(parsed_child.serial_as_str().unwrap(), "STREAMDECK_PLUS_SN");
+                break;
+            }
+        }
+    }
+
+    // 10. Query Child Device Info for Slot 1 (0x1c with slot=1)
+    let get_child_1_query = [0x03, 0x1c, 1];
+    let header = CoraHeader::new(
+        CoraFlags::NONE,
+        CoraHidOp::GetReport,
+        106,
+        get_child_1_query.len(),
+    );
+    let q_len = CoraFrame::new(header, &get_child_1_query)
+        .encode(&mut query_frame_buf)
+        .unwrap();
+    client.write_all(&query_frame_buf[..q_len]).await.unwrap();
+
+    let (_resp_hdr, resp_payload) = read_next_response(&mut client, &mut read_buf, 106).await;
+    assert_eq!(resp_payload[0], 0x03);
+    assert_eq!(resp_payload[1], 0x1c);
+    assert_eq!(resp_payload[4], 0x02); // Connected
+    assert_eq!(resp_payload[5], 1); // Slot 1
+    let parsed_slot1 = ChildDeviceInfo::parse(&resp_payload).unwrap().unwrap();
+    assert_eq!(parsed_slot1.slot_index, 1);
+    assert_eq!(parsed_slot1.product_id, 0x0084);
+    assert_eq!(parsed_slot1.tcp_port, 5345);
+
+    // 11. Send Watchdog / Health Query (0x1a) and verify response
     let get_health_query = [0x03, 0x1a];
     let header = CoraHeader::new(
         CoraFlags::NONE,
         CoraHidOp::Write,
-        106,
+        107,
         get_health_query.len(),
     );
     let q_len = CoraFrame::new(header, &get_health_query)
@@ -210,7 +265,7 @@ async fn test_primary_port_server_protocol_lifecycle() {
         .unwrap();
     client.write_all(&query_frame_buf[..q_len]).await.unwrap();
 
-    let (resp_hdr, resp_payload) = read_next_response(&mut client, &mut read_buf, 106).await;
+    let (resp_hdr, resp_payload) = read_next_response(&mut client, &mut read_buf, 107).await;
     assert_eq!(resp_hdr.flags, CoraFlags::RESULT);
     assert_eq!(resp_payload[0], 0x03);
     assert_eq!(resp_payload[1], 0x1a);

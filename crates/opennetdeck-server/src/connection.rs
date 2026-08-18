@@ -131,12 +131,13 @@ impl PrimaryConnection {
         let hotplug_task = tokio::spawn(async move {
             while let Ok(child) = hotplug_rx.recv().await {
                 let mut payload = [0u8; 128];
-                child.build_payload(true, 0, &mut payload);
+                child.build_payload(true, child.slot_index, &mut payload);
 
                 let mut out = [0u8; 16 + 128];
                 if let Ok(len) = build_cora_push_frame(&payload, &mut out) {
                     info!(
                         peer = %hotplug_peer,
+                        slot = child.slot_index,
                         connected = child.connected,
                         full_hex = ?&payload[..],
                         "--> Pushing live child device hotplug event (0x01, 0x0b) to client"
@@ -406,17 +407,18 @@ impl FrameHandler {
                     let _ = build_mac_address_payload(config.mac_address, &mut resp_payload);
                 }
                 PrimaryFeatureCommand::GetChildDeviceInfo => {
-                    let child = self.state.child_device().await;
                     let requested_slot = if frame.payload.len() >= 3 {
                         frame.payload[2]
                     } else {
                         0
                     };
+                    let child = self.state.child_device_at(requested_slot).await;
                     let mut p = [0u8; 128];
                     child.build_payload(false, requested_slot, &mut p);
                     info!(
                         peer = %self.peer_addr,
                         slot = requested_slot,
+                        connected = child.connected,
                         full_child_hex = ?&p[..],
                         "Returning 0x1c ChildDeviceInfo (128 bytes)"
                     );
@@ -446,21 +448,22 @@ impl FrameHandler {
                     resp_payload[0] = 0x03;
                     resp_payload[1] = 0x1a;
 
-                    // Trigger child hotplug notification on confirmed idle poll
+                    // Trigger child hotplug notification on confirmed idle poll for all active slots
                     if self.mode == ServerMode::Dock
                         && !self.has_sent_initial_hotplug.swap(true, Ordering::SeqCst)
                     {
-                        let child = self.state.child_device().await;
-                        if child.connected {
+                        let children = self.state.all_active_children().await;
+                        for child in children {
                             let push_tx = tx.clone();
                             let push_peer = self.peer_addr;
                             tokio::spawn(async move {
                                 let mut p = [0u8; 128];
-                                child.build_payload(true, 0, &mut p);
+                                child.build_payload(true, child.slot_index, &mut p);
                                 let mut out = [0u8; 16 + 128];
                                 if let Ok(len) = build_cora_push_frame(&p, &mut out) {
                                     info!(
                                         peer = %push_peer,
+                                        slot = child.slot_index,
                                         full_hex = ?&p[..],
                                         "--> Triggering child hotplug push (0x01, 0x0b) on confirmed idle state"
                                     );

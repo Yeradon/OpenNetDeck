@@ -129,6 +129,7 @@ pub fn build_mac_address_payload(mac: [u8; 6], out: &mut [u8]) -> Result<usize, 
 /// Child Stream Deck attachment info (`Device2Info`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildDeviceInfo {
+    pub slot_index: u8,
     pub connected: bool,
     pub vendor_id: u16,
     pub product_id: u16,
@@ -140,8 +141,9 @@ pub struct ChildDeviceInfo {
 }
 
 impl ChildDeviceInfo {
-    pub fn disconnected() -> Self {
+    pub fn disconnected(slot_index: u8) -> Self {
         Self {
+            slot_index,
             connected: false,
             vendor_id: 0,
             product_id: 0,
@@ -154,6 +156,7 @@ impl ChildDeviceInfo {
     }
 
     pub fn connected(
+        slot_index: u8,
         vendor_id: u16,
         product_id: u16,
         product_name: &str,
@@ -171,6 +174,7 @@ impl ChildDeviceInfo {
         serial_buf[..len].copy_from_slice(&bytes[..len]);
 
         Self {
+            slot_index,
             connected: true,
             vendor_id,
             product_id,
@@ -198,6 +202,7 @@ impl ChildDeviceInfo {
             return Ok(None);
         }
 
+        let slot_index = buf[5];
         let vendor_id = u16::from_le_bytes([buf[26], buf[27]]);
         let product_id = u16::from_le_bytes([buf[28], buf[29]]);
 
@@ -222,6 +227,7 @@ impl ChildDeviceInfo {
         let tcp_port = u16::from_le_bytes([buf[126], buf[127]]);
 
         Ok(Some(Self {
+            slot_index,
             connected: true,
             vendor_id,
             product_id,
@@ -234,7 +240,12 @@ impl ChildDeviceInfo {
     }
 
     /// Build a 128-byte `Device2Info` payload with slot correlation and Elgato C++ metadata.
-    pub fn build_payload(&self, is_push_notification: bool, slot_index: u8, out: &mut [u8; 128]) {
+    pub fn build_payload(
+        &self,
+        is_push_notification: bool,
+        requested_slot: u8,
+        out: &mut [u8; 128],
+    ) {
         out.fill(0);
         if is_push_notification {
             out[0] = 0x01;
@@ -248,7 +259,7 @@ impl ChildDeviceInfo {
 
         if self.connected {
             out[4] = 0x02; // Connected status
-            out[5] = slot_index; // Internal Slot / Unit index
+            out[5] = self.slot_index; // Internal Slot / Unit index
 
             // Vendor ID and Product ID
             out[26..28].copy_from_slice(&self.vendor_id.to_le_bytes());
@@ -274,6 +285,7 @@ impl ChildDeviceInfo {
             out[126..128].copy_from_slice(&self.tcp_port.to_le_bytes());
         } else {
             out[4] = 0x00; // Disconnected status
+            out[5] = requested_slot; // Echo requested slot index
         }
     }
 }

@@ -22,7 +22,7 @@ impl PrimaryPortServer {
         loop {
             match listener.accept().await {
                 Ok((socket, peer_addr)) => {
-                    let usb_dev = self.state.usb_device().await;
+                    let usb_dev = self.state.first_usb_device().await;
                     let connection =
                         PrimaryConnection::new(socket, peer_addr, self.state.clone(), usb_dev);
                     tokio::spawn(async move {
