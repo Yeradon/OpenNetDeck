@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+# Default to minimal read-only permissions for all jobs to secure third-party PRs
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.target.system }})
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - system: x86_64-linux
+            os: ubuntu-24.04
+            artifact_name: opennetdeck-x86_64-linux
+          - system: aarch64-linux
+            os: ubuntu-24.04-arm
+            artifact_name: opennetdeck-aarch64-linux
+          - system: aarch64-darwin
+            os: macos-14
+            artifact_name: opennetdeck-aarch64-darwin
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Flake Check
+        run: nix flake check
+
+      - name: Build Package
+        run: nix build .#packages.${{ matrix.target.system }}.default --out-link result
+
+      - name: Prepare Binary Artifact
+        run: |
+          mkdir -p dist
+          cp -L result/bin/opennetdeck-server dist/opennetdeck-server || cp -L result/bin/opennetdeck* dist/
+          tar -czf dist/${{ matrix.target.artifact_name }}.tar.gz -C dist $(ls dist | grep -v '\.tar\.gz$')
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.artifact_name }}
+          path: dist/${{ matrix.target.artifact_name }}.tar.gz
+          retention-days: 14
+
+  release:
+    name: Publish Release Assets
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'Yeradon/OpenNetDeck'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*.tar.gz
+          generate_release_notes: true
