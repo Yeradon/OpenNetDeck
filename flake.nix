@@ -7,7 +7,14 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    let
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+    in
+    flake-utils.lib.eachSystem supportedSystems (system:
       let
         pkgs = import nixpkgs { inherit system; };
       in
@@ -22,16 +29,7 @@
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = [ pkgs.libusb1 ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin (
-              if pkgs ? darwin && pkgs.darwin ? apple_sdk then
-                [
-                  pkgs.darwin.apple_sdk.frameworks.IOKit
-                  pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-                  pkgs.darwin.apple_sdk.frameworks.AppKit
-                ]
-              else
-                [ ]
-            );
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk ];
         };
 
         checks = {
@@ -49,16 +47,7 @@
             libusb1
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
-          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin (
-            if pkgs ? darwin && pkgs.darwin ? apple_sdk then
-              [
-                pkgs.darwin.apple_sdk.frameworks.IOKit
-                pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-                pkgs.darwin.apple_sdk.frameworks.AppKit
-              ]
-            else
-              [ ]
-          );
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk ];
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };
       }
