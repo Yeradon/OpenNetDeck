@@ -34,10 +34,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: DeterminateColor/nix-installer-action@v16
+        uses: DeterminateSystems/nix-installer-action@v16
 
       - name: Magic Nix Cache
-        uses: DeterminateColor/magic-nix-cache-action@v9
+        uses: DeterminateSystems/magic-nix-cache-action@v9
 
       - name: Flake Check
         run: nix flake check
