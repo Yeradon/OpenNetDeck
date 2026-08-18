@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/opennetdeck-protocol",
+    "crates/opennetdeck-server",
+]
+resolver = "2"

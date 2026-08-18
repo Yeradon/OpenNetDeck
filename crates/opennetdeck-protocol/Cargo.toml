@@ -1,0 +1,14 @@
+[package]
+name = "opennetdeck-protocol"
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenNetDeck Contributors"]
+description = "Core no_std protocol framing, codec, and packet definitions for Elgato Network Dock and CORA protocol"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
+
+[dependencies]
