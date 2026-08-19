@@ -26,10 +26,18 @@
           cargoLock = {
             lockFile = ./Cargo.lock;
           };
-          nativeBuildInputs = [ pkgs.pkg-config ];
-          buildInputs = [ pkgs.libusb1 ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk ];
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+            pkgs.apple-sdk
+          ];
+          postFixup = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+            for bin in $out/bin/*; do
+              if [ -f "$bin" ]; then
+                for dylib in $(otool -L "$bin" 2>/dev/null | awk 'NR>1 {print $1}' | grep libiconv); do
+                  install_name_tool -change "$dylib" "/usr/lib/libiconv.2.dylib" "$bin"
+                done
+              fi
+            done
+          '';
         };
 
         checks = {
@@ -43,10 +51,7 @@
             rustfmt
             clippy
             rust-analyzer
-            pkg-config
-            libusb1
           ]
-          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.udev ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.apple-sdk ];
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };
